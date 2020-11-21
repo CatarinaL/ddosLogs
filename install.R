@@ -1,0 +1,7 @@
+install.packages("tidyverse")
+install.packages("rmarkdown")
+install.packages("httr")
+install.packages("farff")
+install.packages("caret")
+install.packages("nnet")
+install.packages("glmnet")
