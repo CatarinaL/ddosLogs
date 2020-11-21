@@ -1,0 +1,129 @@
+---
+title: "ddos logs arff format test"
+output: html_notebook
+---
+
+Data from: https://www.kaggle.com/jacobvs/ddos-attack-network-logs
+
+> The data was collected from a larger-scale network and thus depending on your usage you can ignore a lot of the first attributes of the dataset as they're more network specific.
+
+##Context
+The dataset contains around 2,100,000 labelled network logs from various types of network attacks.
+The types of network attacks logged are: UDP-Flood, Smurf, SIDDOS, HTTP-FLOOD, & Normal traffic
+
+##Content
+Each line of data contains these attributes:
+
+* @attribute SRC_ADD numeric
+* @attribute DES_ADD numeric
+* @attribute PKT_ID numeric
+* @attribute FROM_NODE numeric
+* @attribute TO_NODE numeric
+* @attribute PKT_TYPE {tcp,ack,cbr,ping}
+* @attribute PKT_SIZE numeric
+* @attribute FLAGS {-------,---A---}
+* @attribute FID numeric
+* @attribute SEQ_NUMBER numeric
+* @attribute NUMBEROFPKT numeric
+* @attribute NUMBEROFBYTE numeric
+* @attribute NODENAMEFROM {Switch1,Router,server1,router,clien-4,client-2,Switch2,client-5,clien-9,clien-2,clien-1,clien-14,clien-5,clien-11,clien-13,clien-0,switch1,client-4,clienthttp,clien-7,clien-19,client-14,clien-12,clien-8,clien-15,webserverlistin,client-18,client-1,switch2,clien-6,client-10,client-7,webcache,clien-10,client-15,clien-3,client-17,client-16,clien-17,clien-18,client-12,client-8,client-0,clien-16,client-13,client-11,client-6,client-3,client-9,client-19,http_client}
+* @attribute NODENAMETO {Router,server1,Switch2,Switch1,clien-1,clien-5,clien-7,switch1,clien-11,clien-15,clien-13,clien-3,clien-9,clien-6,router,clien-4,clien-14,switch2,clien-8,clienthttp,webcache,clien-10,clien-12,webserverlistin,clien-0,clien-2,http_client,client-13,client-9,client-1,client-19,client-4,client-17,client-7,client-3,client-12,client-2,clien-18,client-16,clien-17,client-0,clien-16,client-18,client-5,client-11,client-14,client-8,client-6,client-10,clien-19,client-15}
+* @attribute PKT_IN numeric
+* @attribute PKT_OUT numeric
+* @attribute PKT_R numeric
+* @attribute PKTDELAYNODE numeric
+* @attribute PKT_RATE numeric
+* @attribute BYTE_RATE numeric
+* @attribute PKTAVGSIZE numeric
+* @attribute UTILIZATION numeric
+* @attribute PKT_DELAY numeric
+* @attribute PKTSENDTIME numeric
+* @attribute PKTRESEVEDTIME numeric
+* @attribute FIRSTPKTSENT numeric
+* @attribute LASTPKTRESEVED numeric
+* @attribute PKT_CLASS {Normal,UDP-Flood,Smurf,SIDDOS,HTTP-FLOOD}
+
+```{r}
+require("farff")
+require("tidyverse")
+require("caret")
+require("nnet")
+
+
+d = readARFF("final-dataset.arff") #this takes a few seconds to load
+
+#d = readARFF("final-dataset-short.arff") #this is the short dataset that I am using only to do some quick initial analysis
+
+summary(d)
+typeof(d)
+dim(d)
+class(d)
+```
+No missing values!
+There are some categorical variables, including the target variable: PKT_TYPE, FLAGS, NODE_NAME_FROM and NODE_NAME_TO, 
+
+# Target variable
+PKT_CLASS is the target variable, but it's a discret categorical variable with 5 possible values: Normal,UDP-Flood,Smurf,SIDDOS,HTTP-FLOOD. I'll create 4 dummy variables with binary values (1 or 0) so I can use regression to predict each one of them:
+* udp 
+* smurf
+* siddos
+* http
+
+the variable "left out" (reference group) is "Normal".
+
+```{r}
+contrasts(d$PKT_CLASS)
+res <- model.matrix(~ PKT_CLASS, data = d)
+head(res[, -1])
+
+pkt_class_dummies <- data.frame(res[, -1])
+names(pkt_class_dummies)
+dim(pkt_class_dummies)
+colnames(pkt_class_dummies) = c("udp_flood", "smurf", "siddos", "http_flood")
+```
+
+....should i create just one dummy var for normal or not (ddos attack)?
+
+```{r}
+d_augmt <- d
+d_augmt$PKT_CLASS_UDP_FLOOD <- pkt_class_dummies$udp_flood
+d_augmt$PKT_CLASS_Smurf<- pkt_class_dummies$smurf
+d_augmt$PKT_CLASS_SIDDOS<- pkt_class_dummies$siddos
+d_augmt$PKT_CLASS_HTTP_FLOOD<- pkt_class_dummies$http_flood
+
+summary(d_augmt)
+```
+
+## Splitting the data into 3 datasets
+Training,
+Vaidation
+Test (reserved for testing final models)
+
+```{r}
+set.seed(123) #for reproducibility
+ss <- sample(1:3,size=nrow(d_augmt),replace=TRUE,prob=c(0.6,0.2,0.2))
+train_data <- d_augmt[ss==1,]
+val_data <- d_augmt[ss==2,]
+holdout_data <- d_augmt[ss==3,]
+```
+## correlations
+
+```{r}
+corr_matrix <- cor(d[, sapply(d, is.numeric)]) #removing non numeric indexes
+library("corrplot")
+corrplot(corr_matrix)
+#or heatmap version of correlogram:
+palette = colorRampPalette(c("green", "white", "red")) (20)
+heatmap(x = corr_matrix, col = palette, symm = TRUE)
+```
+## fitting a quick linear model
+```{r}
+model <- lm(PKT_CLASS_UDP_FLOOD ~ PKT_AVG_SIZE, data = train_data)
+anova(model)
+plot(model$fit)
+```
+
+##Data normalization
+
+##Feature selection - load and transform bigger dataset first (training)
+###Correlations
